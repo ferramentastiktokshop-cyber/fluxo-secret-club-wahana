@@ -1,0 +1,1051 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Fluxo Secret Club Wahana</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Playfair+Display:wght@700&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: #f8f6f3;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+    cursor: grab;
+  }
+  body.grabbing { cursor: grabbing; }
+
+  #toolbar {
+    position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+    z-index: 100; display: flex; gap: 8px;
+    background: #1a1a1a; padding: 8px 16px;
+    border-radius: 40px; box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+  }
+  #toolbar button {
+    border: none; background: transparent; color: #aaa;
+    font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 500;
+    padding: 8px 14px; border-radius: 20px; cursor: pointer;
+    transition: all 0.2s; white-space: nowrap;
+  }
+  #toolbar button:hover { background: #333; color: #fff; }
+  #toolbar button.active { background: #c9a96e; color: #1a1a1a; }
+  .divider { width: 1px; background: #333; margin: 4px 2px; }
+
+  #canvas { width: 100%; height: 100%; position: relative; }
+  #world { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
+
+  svg#svg {
+    position: absolute; top: 0; left: 0;
+    width: 8000px; height: 6000px;
+    pointer-events: none; z-index: 5;
+  }
+
+  /* Animated dashed line */
+  @keyframes dashFlow {
+    to { stroke-dashoffset: -24; }
+  }
+
+  svg#svg path.connection {
+    fill: none; stroke-width: 2.5; stroke-linecap: round;
+    stroke-dasharray: 8 4;
+    animation: dashFlow 0.8s linear infinite;
+    pointer-events: none;
+  }
+
+  svg#svg path.connection-hit {
+    fill: none; stroke-width: 16; stroke-linecap: round;
+    stroke: transparent; cursor: pointer;
+    pointer-events: stroke;
+  }
+  svg#svg path.connection-hit:hover + path.connection,
+  svg#svg path.connection.hover {
+    stroke-width: 4;
+    filter: brightness(1.3);
+  }
+
+  svg#svg path.connection.selected-line {
+    stroke-width: 4;
+    filter: drop-shadow(0 0 4px currentColor);
+  }
+
+  #conn-delete-btn {
+    position: fixed; display: none; z-index: 200;
+    background: #e74c3c; color: #fff;
+    border: none; border-radius: 50%;
+    width: 26px; height: 26px;
+    font-size: 14px; line-height: 26px; text-align: center;
+    cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    font-family: 'DM Sans', sans-serif;
+  }
+  #conn-delete-btn:hover { background: #c0392b; transform: scale(1.1); }
+
+  svg#svg line.temp-line {
+    stroke: #c9a96e; stroke-width: 2; stroke-dasharray: 6 4;
+    animation: dashFlow 0.5s linear infinite; opacity: 0.7;
+  }
+
+  /* Nodes */
+  .node {
+    position: absolute; z-index: 10;
+    min-width: 60px; max-width: 340px;
+    cursor: move; user-select: none;
+  }
+  .node:hover { z-index: 20; }
+
+  .node-inner {
+    position: relative;
+  }
+
+  .node-content {
+    padding: 10px 18px; border-radius: 12px;
+    font-size: 13px; font-weight: 500; line-height: 1.4;
+    white-space: nowrap; min-height: 38px;
+    display: flex; align-items: center;
+  }
+  .node-content[contenteditable="true"] { outline: none; white-space: pre-wrap; cursor: text; }
+  .node-content[contenteditable="true"]:focus { box-shadow: 0 0 0 2px rgba(201,169,110,0.6); }
+
+  .node.central .node-content {
+    font-family: 'Playfair Display', serif; font-size: 20px; font-weight: 700;
+    padding: 20px 32px; background: #1a1a1a; color: #f8f6f3;
+    border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+  }
+  .node.phase .node-content {
+    font-size: 14px; font-weight: 700; padding: 12px 22px;
+    border-radius: 14px; box-shadow: 0 3px 12px rgba(0,0,0,0.08);
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .node.item .node-content {
+    background: #fff; border: 2px solid #e0dcd6;
+    color: #333; box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+  }
+  .node.detail .node-content {
+    background: transparent; border: 1.5px dashed #ccc;
+    color: #666; font-size: 12px; font-weight: 400;
+  }
+
+  .node.textbox { max-width: 500px; }
+  .node.textbox .node-content {
+    background: rgba(255,255,255,0.85); border: 1.5px solid #d5d0c8;
+    color: #444; font-size: 13px; font-weight: 400;
+    line-height: 1.6; white-space: pre-wrap;
+    padding: 14px 18px; border-radius: 10px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.04);
+    min-width: 140px; min-height: 50px;
+    display: block;
+  }
+
+  .delete-btn {
+    position: absolute; top: -8px; right: -8px;
+    width: 20px; height: 20px; border-radius: 50%;
+    background: #e74c3c; color: #fff; border: none;
+    font-size: 12px; line-height: 20px; text-align: center;
+    cursor: pointer; display: none; z-index: 30;
+  }
+  .node:hover .delete-btn { display: block; }
+
+  .node.selected { outline: 2.5px solid #c9a96e; outline-offset: 3px; border-radius: 14px; }
+
+  /* Anchor points */
+  .anchor {
+    position: absolute;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: #c9a96e;
+    border: 2px solid #fff;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+    cursor: crosshair;
+    z-index: 25;
+    opacity: 0;
+    transition: opacity 0.15s, transform 0.15s;
+    transform: scale(0.6);
+  }
+  .node:hover .anchor,
+  .anchor.active {
+    opacity: 1;
+    transform: scale(1);
+  }
+  .anchor:hover {
+    transform: scale(1.3);
+    background: #e07a5f;
+  }
+
+  .anchor.top    { top: -6px;   left: 50%;  transform: translateX(-50%) scale(0.6); }
+  .anchor.bottom { bottom: -6px; left: 50%; transform: translateX(-50%) scale(0.6); }
+  .anchor.left   { left: -6px;  top: 50%;   transform: translateY(-50%) scale(0.6); }
+  .anchor.right  { right: -6px; top: 50%;   transform: translateY(-50%) scale(0.6); }
+
+  .node:hover .anchor.top    { transform: translateX(-50%) scale(1); }
+  .node:hover .anchor.bottom { transform: translateX(-50%) scale(1); }
+  .node:hover .anchor.left   { transform: translateY(-50%) scale(1); }
+  .node:hover .anchor.right  { transform: translateY(-50%) scale(1); }
+  .anchor.top:hover    { transform: translateX(-50%) scale(1.3) !important; }
+  .anchor.bottom:hover { transform: translateX(-50%) scale(1.3) !important; }
+  .anchor.left:hover   { transform: translateY(-50%) scale(1.3) !important; }
+  .anchor.right:hover  { transform: translateY(-50%) scale(1.3) !important; }
+
+  /* Color themes */
+  .theme-gold .node-content { background: #c9a96e; color: #1a1a1a; }
+  .theme-coral .node-content { background: #e07a5f; color: #fff; }
+  .theme-sage .node-content { background: #81b29a; color: #fff; }
+  .theme-blue .node-content { background: #5b8fb9; color: #fff; }
+  .theme-plum .node-content { background: #9b72aa; color: #fff; }
+  .theme-rose .node-content { background: #d4838f; color: #fff; }
+  .theme-slate .node-content { background: #6b7b8d; color: #fff; }
+
+  .s-gold { stroke: #c9a96e; } .s-coral { stroke: #e07a5f; }
+  .s-sage { stroke: #81b29a; } .s-blue { stroke: #5b8fb9; }
+  .s-plum { stroke: #9b72aa; } .s-rose { stroke: #d4838f; }
+  .s-slate { stroke: #6b7b8d; } .s-dark { stroke: #1a1a1a; }
+  .s-muted { stroke: #bbb; }
+
+  #help {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    background: rgba(26,26,26,0.85); color: #aaa;
+    padding: 8px 20px; border-radius: 20px;
+    font-size: 11px; z-index: 100; backdrop-filter: blur(8px);
+  }
+  #help span { color: #c9a96e; font-weight: 600; }
+
+  #color-picker {
+    position: fixed; display: none; z-index: 200;
+    background: #1a1a1a; padding: 8px; border-radius: 12px;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3); gap: 6px;
+  }
+  #color-picker.show { display: flex; }
+  .color-opt {
+    width: 24px; height: 24px; border-radius: 50%;
+    border: 2px solid transparent; cursor: pointer; transition: transform 0.15s;
+  }
+  .color-opt:hover { transform: scale(1.2); border-color: #fff; }
+
+  #zoom-info {
+    position: fixed; bottom: 16px; right: 16px;
+    background: rgba(26,26,26,0.85); color: #aaa;
+    padding: 6px 14px; border-radius: 16px; font-size: 12px; z-index: 100;
+  }
+
+  #selection-box {
+    position: fixed; border: 2px dashed #c9a96e;
+    background: rgba(201,169,110,0.1); pointer-events: none;
+    z-index: 90; display: none; border-radius: 4px;
+  }
+
+  #select-count {
+    position: fixed; top: 60px; left: 50%; transform: translateX(-50%);
+    background: #c9a96e; color: #1a1a1a;
+    padding: 6px 16px; border-radius: 20px;
+    font-size: 12px; font-weight: 600; z-index: 100; display: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="toolbar">
+  <button onclick="addNode('phase')">+ Fase</button>
+  <button onclick="addNode('item')">+ Item</button>
+  <button onclick="addNode('detail')">+ Detalhe</button>
+  <button onclick="addNode('textbox')">+ Texto</button>
+  <div class="divider"></div>
+  <button onclick="selectAllNodes()">☑ Tudo</button>
+  <button onclick="clearSelection()">✕ Limpar</button>
+  <div class="divider"></div>
+  <button onclick="zoomFit()">⊞ Ajustar</button>
+  <button onclick="exportPNG()">📷 Exportar PNG</button>
+</div>
+
+<div id="selection-box"></div>
+<div id="select-count"></div>
+<button id="conn-delete-btn" onclick="deleteSelectedConn()">×</button>
+
+<div id="color-picker">
+  <div class="color-opt" style="background:#c9a96e" onclick="applyColor('gold')"></div>
+  <div class="color-opt" style="background:#e07a5f" onclick="applyColor('coral')"></div>
+  <div class="color-opt" style="background:#81b29a" onclick="applyColor('sage')"></div>
+  <div class="color-opt" style="background:#5b8fb9" onclick="applyColor('blue')"></div>
+  <div class="color-opt" style="background:#9b72aa" onclick="applyColor('plum')"></div>
+  <div class="color-opt" style="background:#d4838f" onclick="applyColor('rose')"></div>
+  <div class="color-opt" style="background:#6b7b8d" onclick="applyColor('slate')"></div>
+</div>
+
+<div id="canvas">
+  <div id="world">
+    <svg id="svg"></svg>
+  </div>
+</div>
+
+<div id="help">
+  <span>Pontos</span> conectar · <span>Shift+arraste</span> selecionar · <span>Duplo-clique</span> editar · <span>Clique direito</span> cor · <span>Scroll</span> zoom · Texto: <span>Ctrl+Enter</span> para sair
+</div>
+<div id="zoom-info">100%</div>
+
+<script>
+const world = document.getElementById('world');
+const svg = document.getElementById('svg');
+const canvas = document.getElementById('canvas');
+const colorPicker = document.getElementById('color-picker');
+const zoomInfo = document.getElementById('zoom-info');
+const selBox = document.getElementById('selection-box');
+const selectCountEl = document.getElementById('select-count');
+
+let nodes = [];
+let connections = [];
+let nodeId = 0;
+let scale = 1, panX = 0, panY = 0;
+
+let mode = 'idle';
+let colorTarget = null;
+let selectedNodes = new Set();
+let selectedConnIdx = -1; // index in connections array
+const connDeleteBtn = document.getElementById('conn-delete-btn');
+
+let panStartX, panStartY;
+let selStartX, selStartY;
+let dragNode = null, dragOffX, dragOffY, dragGroupSnap = null;
+
+// Connection dragging
+let connDragFrom = null; // { nodeId, side }
+let tempLine = null;
+
+const THEMES = ['gold','coral','sage','blue','plum','rose','slate'];
+const SM = {
+  gold:'s-gold', coral:'s-coral', sage:'s-sage', blue:'s-blue',
+  plum:'s-plum', rose:'s-rose', slate:'s-slate', dark:'s-dark', muted:'s-muted'
+};
+
+// ========================
+// GET ANCHOR POSITION (world coords)
+// ========================
+function getAnchorPos(nodeData, side) {
+  const el = document.getElementById('node-'+nodeData.id);
+  if (!el) return { x: nodeData.x, y: nodeData.y };
+  const w = el.offsetWidth, h = el.offsetHeight;
+  switch(side) {
+    case 'top':    return { x: nodeData.x + w/2, y: nodeData.y };
+    case 'bottom': return { x: nodeData.x + w/2, y: nodeData.y + h };
+    case 'left':   return { x: nodeData.x,       y: nodeData.y + h/2 };
+    case 'right':  return { x: nodeData.x + w,   y: nodeData.y + h/2 };
+  }
+  return { x: nodeData.x + w/2, y: nodeData.y + h/2 };
+}
+
+function getNodeCenter(n) {
+  const el = document.getElementById('node-'+n.id);
+  if (!el) return {x:n.x, y:n.y};
+  return { x: n.x + el.offsetWidth/2, y: n.y + el.offsetHeight/2 };
+}
+
+// Find closest anchor on a target node to a given point
+function closestAnchor(nodeData, px, py) {
+  let best = null, bestD = Infinity;
+  for (const s of ['top','bottom','left','right']) {
+    const p = getAnchorPos(nodeData, s);
+    const d = Math.hypot(p.x - px, p.y - py);
+    if (d < bestD) { bestD = d; best = s; }
+  }
+  return best;
+}
+
+// ========================
+// CREATE NODE
+// ========================
+function createNodeEl(n) {
+  const el = document.createElement('div');
+  el.className = `node ${n.type} ${n.theme ? 'theme-'+n.theme : ''}`;
+  el.id = 'node-' + n.id;
+  el.style.left = n.x + 'px';
+  el.style.top = n.y + 'px';
+
+  const inner = document.createElement('div');
+  inner.className = 'node-inner';
+
+  const content = document.createElement('div');
+  content.className = 'node-content';
+  content.innerText = n.text;
+
+  const del = document.createElement('button');
+  del.className = 'delete-btn';
+  del.innerText = '×';
+  del.onclick = (e) => { e.stopPropagation(); deleteNode(n.id); };
+
+  // Anchor points
+  const sides = ['top','bottom','left','right'];
+  sides.forEach(side => {
+    const dot = document.createElement('div');
+    dot.className = 'anchor ' + side;
+    dot.dataset.side = side;
+    dot.dataset.nodeId = n.id;
+
+    dot.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      mode = 'connecting';
+      connDragFrom = { nodeId: n.id, side: side };
+      // Create temp SVG line
+      const pos = getAnchorPos(n, side);
+      tempLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      tempLine.classList.add('temp-line');
+      tempLine.setAttribute('x1', pos.x);
+      tempLine.setAttribute('y1', pos.y);
+      tempLine.setAttribute('x2', pos.x);
+      tempLine.setAttribute('y2', pos.y);
+      svg.appendChild(tempLine);
+      dot.classList.add('active');
+    });
+
+    inner.appendChild(dot);
+  });
+
+  inner.appendChild(content);
+  if (n.type !== 'central') el.appendChild(del);
+  el.appendChild(inner);
+
+  // Node drag
+  el.addEventListener('mousedown', (e) => {
+    if (e.button !== 0) return;
+    if (e.target.classList.contains('delete-btn')) return;
+    if (e.target.classList.contains('anchor')) return;
+    if (e.target.getAttribute('contenteditable') === 'true' && document.activeElement === e.target) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+      if (selectedNodes.has(n.id)) { selectedNodes.delete(n.id); el.classList.remove('selected'); }
+      else { selectedNodes.add(n.id); el.classList.add('selected'); }
+      showSelectCount();
+      return;
+    }
+
+    if (selectedNodes.has(n.id) && selectedNodes.size > 0) {
+      mode = 'dragging-group';
+      dragNode = n;
+      dragOffX = (e.clientX - panX)/scale - n.x;
+      dragOffY = (e.clientY - panY)/scale - n.y;
+      dragGroupSnap = {};
+      nodes.forEach(nd => { if (selectedNodes.has(nd.id)) dragGroupSnap[nd.id] = {x:nd.x, y:nd.y}; });
+      return;
+    }
+
+    clearSelection();
+    mode = 'dragging';
+    dragNode = n;
+    dragOffX = (e.clientX - panX)/scale - n.x;
+    dragOffY = (e.clientY - panY)/scale - n.y;
+    el.style.zIndex = 50;
+  });
+
+  el.addEventListener('dblclick', () => {
+    content.setAttribute('contenteditable', 'true');
+    content.focus();
+    const range = document.createRange();
+    range.selectNodeContents(content);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  });
+  content.addEventListener('blur', () => { content.setAttribute('contenteditable','false'); n.text = content.innerText; });
+  content.addEventListener('keydown', (e) => {
+    if (n.type === 'textbox') {
+      // Textbox: Ctrl+Enter or Esc to finish, Enter for new line
+      if ((e.key==='Enter'&&(e.ctrlKey||e.metaKey)) || e.key==='Escape') { e.preventDefault(); content.blur(); }
+    } else {
+      if (e.key==='Enter'&&!e.shiftKey){e.preventDefault();content.blur();}
+    }
+  });
+
+  el.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    if (n.type === 'central') return;
+    colorTarget = n;
+    colorPicker.style.left = e.clientX+'px';
+    colorPicker.style.top = e.clientY+'px';
+    colorPicker.classList.add('show');
+  });
+
+  world.appendChild(el);
+  return el;
+}
+
+function addNodeData(type, x, y, text, theme) {
+  const n = { id: nodeId++, type, x, y, text, theme: theme || null };
+  nodes.push(n);
+  createNodeEl(n);
+  return n;
+}
+
+function addConnection(fromId, toId, stroke, fromSide, toSide) {
+  if (connections.find(c => (c.from===fromId&&c.to===toId)||(c.from===toId&&c.to===fromId))) return;
+  const fromNode = nodes.find(n => n.id === fromId);
+  const s = stroke || (fromNode && fromNode.theme ? fromNode.theme : 'dark');
+  connections.push({
+    from: fromId, to: toId, stroke: s,
+    fromSide: fromSide || null,
+    toSide: toSide || null
+  });
+  drawConnections();
+}
+
+function deleteNode(id) {
+  const el = document.getElementById('node-'+id);
+  if (el) el.remove();
+  nodes = nodes.filter(n => n.id !== id);
+  connections = connections.filter(c => c.from !== id && c.to !== id);
+  selectedNodes.delete(id);
+  drawConnections();
+  showSelectCount();
+}
+
+// ========================
+// DRAW CONNECTIONS
+// ========================
+function drawConnections() {
+  svg.querySelectorAll('path.connection, path.connection-hit').forEach(p => p.remove());
+
+  connections.forEach((c, idx) => {
+    const fromN = nodes.find(n => n.id===c.from);
+    const toN = nodes.find(n => n.id===c.to);
+    if (!fromN||!toN) return;
+
+    let fs = c.fromSide, ts = c.toSide;
+    if (!fs || !ts) {
+      const fc = getNodeCenter(fromN), tc = getNodeCenter(toN);
+      if (!fs) fs = closestAnchor(fromN, tc.x, tc.y);
+      if (!ts) ts = closestAnchor(toN, fc.x, fc.y);
+    }
+
+    const a = getAnchorPos(fromN, fs);
+    const b = getAnchorPos(toN, ts);
+
+    const dist = Math.max(Math.hypot(b.x-a.x, b.y-a.y) * 0.35, 40);
+    const offsets = {
+      top:{x:0,y:-dist}, bottom:{x:0,y:dist},
+      left:{x:-dist,y:0}, right:{x:dist,y:0}
+    };
+    const oA = offsets[fs], oB = offsets[ts];
+    const d = `M${a.x},${a.y} C${a.x+oA.x},${a.y+oA.y} ${b.x+oB.x},${b.y+oB.y} ${b.x},${b.y}`;
+
+    // Invisible hit area (wide, clickable)
+    const hit = document.createElementNS('http://www.w3.org/2000/svg','path');
+    hit.classList.add('connection-hit');
+    hit.setAttribute('d', d);
+    hit.dataset.connIdx = idx;
+    hit.addEventListener('click', (e) => {
+      e.stopPropagation();
+      selectConnection(idx, e);
+    });
+    hit.addEventListener('mouseenter', () => {
+      const vis = svg.querySelector(`path.connection[data-conn-idx="${idx}"]`);
+      if (vis) vis.classList.add('hover');
+    });
+    hit.addEventListener('mouseleave', () => {
+      const vis = svg.querySelector(`path.connection[data-conn-idx="${idx}"]`);
+      if (vis) vis.classList.remove('hover');
+    });
+    svg.appendChild(hit);
+
+    // Visible path
+    const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+    path.classList.add('connection');
+    path.classList.add(SM[c.stroke]||'s-dark');
+    if (idx === selectedConnIdx) path.classList.add('selected-line');
+    path.setAttribute('d', d);
+    path.dataset.connIdx = idx;
+    svg.appendChild(path);
+  });
+}
+
+function selectConnection(idx, e) {
+  // Deselect previous
+  deselectConnection();
+  selectedConnIdx = idx;
+
+  const vis = svg.querySelector(`path.connection[data-conn-idx="${idx}"]`);
+  if (vis) vis.classList.add('selected-line');
+
+  // Show delete button at click position
+  connDeleteBtn.style.left = (e.clientX + 10) + 'px';
+  connDeleteBtn.style.top = (e.clientY - 13) + 'px';
+  connDeleteBtn.style.display = 'block';
+}
+
+function deselectConnection() {
+  if (selectedConnIdx >= 0) {
+    const vis = svg.querySelector(`path.connection.selected-line`);
+    if (vis) vis.classList.remove('selected-line');
+  }
+  selectedConnIdx = -1;
+  connDeleteBtn.style.display = 'none';
+}
+
+function deleteSelectedConn() {
+  if (selectedConnIdx >= 0 && selectedConnIdx < connections.length) {
+    connections.splice(selectedConnIdx, 1);
+    selectedConnIdx = -1;
+    connDeleteBtn.style.display = 'none';
+    drawConnections();
+  }
+}
+
+function updateTransform() {
+  world.style.transform = `translate(${panX}px,${panY}px) scale(${scale})`;
+  zoomInfo.textContent = Math.round(scale*100)+'%';
+}
+
+// ========================
+// CANVAS MOUSEDOWN
+// ========================
+canvas.addEventListener('mousedown', (e) => {
+  if (e.button !== 0) return;
+  if (mode === 'connecting') return;
+  const onBg = (e.target === canvas || e.target === world || e.target === svg);
+  if (!onBg) return;
+
+  deselectConnection();
+
+  if (e.shiftKey) {
+    mode = 'selecting';
+    selStartX = e.clientX; selStartY = e.clientY;
+    selBox.style.left = e.clientX+'px'; selBox.style.top = e.clientY+'px';
+    selBox.style.width = '0px'; selBox.style.height = '0px';
+    selBox.style.display = 'block';
+    return;
+  }
+
+  clearSelection();
+  mode = 'panning';
+  panStartX = e.clientX - panX;
+  panStartY = e.clientY - panY;
+  document.body.classList.add('grabbing');
+});
+
+// ========================
+// GLOBAL MOUSEMOVE
+// ========================
+window.addEventListener('mousemove', (e) => {
+  switch(mode) {
+    case 'connecting': {
+      if (!tempLine || !connDragFrom) break;
+      const worldX = (e.clientX - panX)/scale;
+      const worldY = (e.clientY - panY)/scale;
+      tempLine.setAttribute('x2', worldX);
+      tempLine.setAttribute('y2', worldY);
+
+      // Highlight nearest anchor on hover
+      document.querySelectorAll('.anchor.hover-target').forEach(a => a.classList.remove('hover-target'));
+      const closest = findClosestAnchorToPoint(worldX, worldY, connDragFrom.nodeId);
+      if (closest && closest.dist < 30) {
+        const targetEl = document.querySelector(`#node-${closest.nodeId} .anchor.${closest.side}`);
+        if (targetEl) targetEl.classList.add('hover-target', 'active');
+      }
+      break;
+    }
+    case 'selecting': {
+      const x = Math.min(e.clientX, selStartX), y = Math.min(e.clientY, selStartY);
+      const w = Math.abs(e.clientX-selStartX), h = Math.abs(e.clientY-selStartY);
+      selBox.style.left=x+'px'; selBox.style.top=y+'px';
+      selBox.style.width=w+'px'; selBox.style.height=h+'px';
+      const box = {left:x, top:y, right:x+w, bottom:y+h};
+      nodes.forEach(n => {
+        const el = document.getElementById('node-'+n.id);
+        if (!el) return;
+        const r = el.getBoundingClientRect();
+        const inside = r.left<box.right && r.right>box.left && r.top<box.bottom && r.bottom>box.top;
+        el.classList.toggle('selected', inside || selectedNodes.has(n.id));
+      });
+      break;
+    }
+    case 'panning': {
+      panX = e.clientX - panStartX;
+      panY = e.clientY - panStartY;
+      updateTransform();
+      break;
+    }
+    case 'dragging': {
+      if (!dragNode) break;
+      dragNode.x = (e.clientX-panX)/scale - dragOffX;
+      dragNode.y = (e.clientY-panY)/scale - dragOffY;
+      const el = document.getElementById('node-'+dragNode.id);
+      el.style.left = dragNode.x+'px'; el.style.top = dragNode.y+'px';
+      drawConnections();
+      break;
+    }
+    case 'dragging-group': {
+      if (!dragNode||!dragGroupSnap) break;
+      const nx = (e.clientX-panX)/scale - dragOffX;
+      const ny = (e.clientY-panY)/scale - dragOffY;
+      const o = dragGroupSnap[dragNode.id];
+      if (!o) break;
+      const dx = nx-o.x, dy = ny-o.y;
+      for (const n of nodes) {
+        const s = dragGroupSnap[n.id];
+        if (!s) continue;
+        n.x = s.x+dx; n.y = s.y+dy;
+        const el = document.getElementById('node-'+n.id);
+        if (el) { el.style.left=n.x+'px'; el.style.top=n.y+'px'; }
+      }
+      drawConnections();
+      break;
+    }
+  }
+});
+
+function findClosestAnchorToPoint(wx, wy, excludeNodeId) {
+  let best = null, bestD = Infinity;
+  for (const n of nodes) {
+    if (n.id === excludeNodeId) continue;
+    for (const s of ['top','bottom','left','right']) {
+      const p = getAnchorPos(n, s);
+      const d = Math.hypot(p.x-wx, p.y-wy);
+      if (d < bestD) { bestD = d; best = { nodeId: n.id, side: s, dist: d }; }
+    }
+  }
+  return best;
+}
+
+// ========================
+// GLOBAL MOUSEUP
+// ========================
+window.addEventListener('mouseup', (e) => {
+  switch(mode) {
+    case 'connecting': {
+      // Clean up temp line
+      if (tempLine) { tempLine.remove(); tempLine = null; }
+      document.querySelectorAll('.anchor.active').forEach(a => a.classList.remove('active'));
+      document.querySelectorAll('.anchor.hover-target').forEach(a => a.classList.remove('hover-target'));
+
+      if (connDragFrom) {
+        const worldX = (e.clientX-panX)/scale;
+        const worldY = (e.clientY-panY)/scale;
+        const target = findClosestAnchorToPoint(worldX, worldY, connDragFrom.nodeId);
+        if (target && target.dist < 40) {
+          const fromNode = nodes.find(n => n.id === connDragFrom.nodeId);
+          const s = fromNode && fromNode.theme ? fromNode.theme : 'dark';
+          addConnection(connDragFrom.nodeId, target.nodeId, s, connDragFrom.side, target.side);
+        }
+        connDragFrom = null;
+      }
+      break;
+    }
+    case 'selecting': {
+      selBox.style.display = 'none';
+      const x = Math.min(e.clientX,selStartX), y = Math.min(e.clientY,selStartY);
+      const w = Math.abs(e.clientX-selStartX), h = Math.abs(e.clientY-selStartY);
+      if (w>3||h>3) {
+        const box = {left:x,top:y,right:x+w,bottom:y+h};
+        nodes.forEach(n => {
+          const el = document.getElementById('node-'+n.id);
+          if (!el) return;
+          const r = el.getBoundingClientRect();
+          if (r.left<box.right && r.right>box.left && r.top<box.bottom && r.bottom>box.top) {
+            selectedNodes.add(n.id); el.classList.add('selected');
+          }
+        });
+      }
+      showSelectCount();
+      break;
+    }
+    case 'panning': {
+      document.body.classList.remove('grabbing');
+      break;
+    }
+    case 'dragging': {
+      if (dragNode) document.getElementById('node-'+dragNode.id).style.zIndex = 10;
+      dragNode = null;
+      break;
+    }
+    case 'dragging-group': {
+      dragNode = null; dragGroupSnap = null;
+      break;
+    }
+  }
+  mode = 'idle';
+});
+
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const d = e.deltaY>0 ? 0.92 : 1.08;
+  const ns = Math.min(Math.max(scale*d, 0.2), 3);
+  const mx = e.clientX, my = e.clientY;
+  panX = mx-(mx-panX)*(ns/scale);
+  panY = my-(my-panY)*(ns/scale);
+  scale = ns;
+  updateTransform();
+}, {passive:false});
+
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('#color-picker')) colorPicker.classList.remove('show');
+  if (!e.target.closest('#conn-delete-btn') && !e.target.closest('path.connection-hit')) deselectConnection();
+});
+
+function applyColor(theme) {
+  if (!colorTarget) return;
+  const el = document.getElementById('node-'+colorTarget.id);
+  THEMES.forEach(t => el.classList.remove('theme-'+t));
+  el.classList.add('theme-'+theme);
+  colorTarget.theme = theme;
+  connections.forEach(c => { if (c.from===colorTarget.id) c.stroke = theme; });
+  drawConnections();
+  colorPicker.classList.remove('show');
+  colorTarget = null;
+}
+
+function selectAllNodes() {
+  nodes.forEach(n => { selectedNodes.add(n.id); const el=document.getElementById('node-'+n.id); if(el) el.classList.add('selected'); });
+  showSelectCount();
+}
+
+function clearSelection() {
+  selectedNodes.clear();
+  nodes.forEach(n => { const el=document.getElementById('node-'+n.id); if(el) el.classList.remove('selected'); });
+  selectCountEl.style.display = 'none';
+}
+
+function showSelectCount() {
+  const c = selectedNodes.size;
+  if (c>0) { selectCountEl.textContent = c+' nó'+(c>1?'s':'')+' — arraste para mover'; selectCountEl.style.display = 'block'; }
+  else selectCountEl.style.display = 'none';
+}
+
+document.addEventListener('keydown', (e) => {
+  const a = document.activeElement;
+  if (a && a.getAttribute('contenteditable')==='true') return;
+  if (e.key==='a'&&(e.ctrlKey||e.metaKey)){e.preventDefault();selectAllNodes();}
+  if (e.key==='Escape') clearSelection();
+  if ((e.key==='Delete'||e.key==='Backspace')) {
+    if (selectedConnIdx >= 0) { deleteSelectedConn(); e.preventDefault(); return; }
+    if (selectedNodes.size>0) { [...selectedNodes].forEach(id=>deleteNode(id)); }
+  }
+});
+
+function addNode(type) {
+  const cx=(window.innerWidth/2-panX)/scale, cy=(window.innerHeight/2-panY)/scale;
+  const theme = type==='phase'?THEMES[Math.floor(Math.random()*THEMES.length)]:null;
+  const texts = {phase:'NOVA FASE', item:'Novo item', detail:'Detalhe...', textbox:'Digite seu texto aqui...'};
+  addNodeData(type, cx-60, cy-20, texts[type], theme);
+}
+
+function zoomFit() {
+  if (!nodes.length) return;
+  let mnX=Infinity,mnY=Infinity,mxX=-Infinity,mxY=-Infinity;
+  nodes.forEach(n => { const el=document.getElementById('node-'+n.id); if(!el)return; mnX=Math.min(mnX,n.x);mnY=Math.min(mnY,n.y);mxX=Math.max(mxX,n.x+el.offsetWidth);mxY=Math.max(mxY,n.y+el.offsetHeight); });
+  const p=100,w=mxX-mnX+p*2,h=mxY-mnY+p*2;
+  scale=Math.min(window.innerWidth/w,window.innerHeight/h,1.5);
+  panX=(window.innerWidth-w*scale)/2-(mnX-p)*scale;
+  panY=(window.innerHeight-h*scale)/2-(mnY-p)*scale;
+  updateTransform();
+}
+
+async function exportPNG() {
+  // 1. Calculate bounding box of all nodes
+  let mnX=Infinity,mnY=Infinity,mxX=-Infinity,mxY=-Infinity;
+  nodes.forEach(n => {
+    const el=document.getElementById('node-'+n.id);
+    if(!el) return;
+    mnX=Math.min(mnX,n.x); mnY=Math.min(mnY,n.y);
+    mxX=Math.max(mxX,n.x+el.offsetWidth); mxY=Math.max(mxY,n.y+el.offsetHeight);
+  });
+  const pad = 80;
+  const offX = mnX - pad, offY = mnY - pad;
+  const W = (mxX - mnX) + pad*2;
+  const H = (mxY - mnY) + pad*2;
+  const DPR = 2; // retina quality
+
+  // 2. Build an SVG that contains everything
+  const svgNS = 'http://www.w3.org/2000/svg';
+
+  // Collect all styles needed
+  const styleText = document.querySelector('style').textContent;
+
+  // Clone the world contents into a foreignObject
+  const worldClone = world.cloneNode(true);
+  // Reset transform on clone
+  worldClone.style.transform = `translate(${-offX}px, ${-offY}px)`;
+  worldClone.style.position = 'absolute';
+  worldClone.style.top = '0';
+  worldClone.style.left = '0';
+
+  // Remove anchors, delete buttons from clone for clean export
+  worldClone.querySelectorAll('.anchor, .delete-btn, .connection-hit').forEach(el => el.remove());
+  // Remove selected outlines
+  worldClone.querySelectorAll('.selected').forEach(el => el.classList.remove('selected'));
+  worldClone.querySelectorAll('.selected-line').forEach(el => el.classList.remove('selected-line'));
+
+  // Build full SVG
+  const exportSvg = document.createElementNS(svgNS, 'svg');
+  exportSvg.setAttribute('xmlns', svgNS);
+  exportSvg.setAttribute('width', W);
+  exportSvg.setAttribute('height', H);
+  exportSvg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+
+  // Background rect
+  const bgRect = document.createElementNS(svgNS, 'rect');
+  bgRect.setAttribute('width', W);
+  bgRect.setAttribute('height', H);
+  bgRect.setAttribute('fill', '#f8f6f3');
+  exportSvg.appendChild(bgRect);
+
+  // Style element
+  const styleEl = document.createElementNS(svgNS, 'style');
+  styleEl.textContent = styleText;
+  exportSvg.appendChild(styleEl);
+
+  // ForeignObject with the world
+  const fo = document.createElementNS(svgNS, 'foreignObject');
+  fo.setAttribute('x', 0);
+  fo.setAttribute('y', 0);
+  fo.setAttribute('width', W + offX + 2000);
+  fo.setAttribute('height', H + offY + 2000);
+  fo.appendChild(worldClone);
+  exportSvg.appendChild(fo);
+
+  // Serialize to string
+  const serializer = new XMLSerializer();
+  const svgString = serializer.serializeToString(exportSvg);
+  const svgBlob = new Blob([svgString], {type: 'image/svg+xml;charset=utf-8'});
+  const url = URL.createObjectURL(svgBlob);
+
+  // 3. Draw onto canvas
+  const img = new Image();
+  img.onload = () => {
+    const c = document.createElement('canvas');
+    c.width = W * DPR;
+    c.height = H * DPR;
+    const ctx = c.getContext('2d');
+    ctx.scale(DPR, DPR);
+    ctx.fillStyle = '#f8f6f3';
+    ctx.fillRect(0, 0, W, H);
+    ctx.drawImage(img, 0, 0, W, H);
+    URL.revokeObjectURL(url);
+
+    // Download
+    c.toBlob((blob) => {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'fluxo-secret-club-wahana.png';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(a.href);
+    }, 'image/png');
+  };
+  img.onerror = () => {
+    // Fallback: download as SVG
+    URL.revokeObjectURL(url);
+    const svgBlobFallback = new Blob([svgString], {type: 'image/svg+xml'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(svgBlobFallback);
+    a.download = 'fluxo-secret-club-wahana.svg';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(a.href);
+  };
+  img.src = url;
+}
+
+// ========================
+// BUILD FLOW
+// ========================
+function buildFlow() {
+  const central = addNodeData('central', 800, 600, 'SECRET CLUB\nWAHANA', null);
+
+  const reason = addNodeData('phase', 380, 580, 'REASON WHY', 'gold');
+  addConnection(central.id, reason.id, 'gold', 'left', 'right');
+  const r1 = addNodeData('item', 80, 500, 'Aniversário da marca / Marco especial');
+  const r2 = addNodeData('item', 80, 555, 'Pré-lançamento exclusivo dos kits');
+  const r3 = addNodeData('item', 80, 610, 'Programa de Insiders / Co-criação');
+  const r4 = addNodeData('detail', 80, 670, 'Escolher o motivo que combina com o momento');
+  addConnection(reason.id, r1.id, 'gold', 'left', 'right');
+  addConnection(reason.id, r2.id, 'gold', 'left', 'right');
+  addConnection(reason.id, r3.id, 'gold', 'left', 'right');
+  addConnection(reason.id, r4.id, 'gold', 'left', 'right');
+
+  const canais = addNodeData('phase', 750, 330, 'CANAIS DE ATIVAÇÃO', 'coral');
+  addConnection(central.id, canais.id, 'coral', 'top', 'bottom');
+  const c1 = addNodeData('item', 460, 200, 'WhatsApp (canal principal)');
+  const c2 = addNodeData('item', 660, 200, 'E-mail (convite visual)');
+  const c3 = addNodeData('item', 860, 200, 'DM Instagram');
+  const c4 = addNodeData('item', 1020, 200, 'SMS');
+  const c5 = addNodeData('item', 1130, 200, 'Ligação (ticket alto)');
+  addConnection(canais.id, c1.id, 'coral', 'top', 'bottom');
+  addConnection(canais.id, c2.id, 'coral', 'top', 'bottom');
+  addConnection(canais.id, c3.id, 'coral', 'top', 'bottom');
+  addConnection(canais.id, c4.id, 'coral', 'top', 'bottom');
+  addConnection(canais.id, c5.id, 'coral', 'top', 'bottom');
+  const c1d1 = addNodeData('detail', 350, 100, 'Msg personalizada com nome');
+  const c1d2 = addNodeData('detail', 350, 140, 'Áudio curto da fundadora');
+  const c1d3 = addNodeData('detail', 560, 100, 'Código de acesso exclusivo');
+  addConnection(c1.id, c1d1.id, 'muted', 'top', 'bottom');
+  addConnection(c1.id, c1d2.id, 'muted', 'top', 'bottom');
+  addConnection(c1.id, c1d3.id, 'muted', 'top', 'bottom');
+  const seq = addNodeData('detail', 780, 130, '1º WhatsApp → 2º E-mail → 3º DM/SMS → 4º Ligação');
+  addConnection(canais.id, seq.id, 'muted', 'top', 'bottom');
+
+  const perfil = addNodeData('phase', 1150, 520, 'PERFIL SECRETO INSTAGRAM', 'sage');
+  addConnection(central.id, perfil.id, 'sage', 'right', 'left');
+  const p1 = addNodeData('item', 1420, 440, 'Perfil fechado (aceitar 1 a 1)');
+  const p2 = addNodeData('item', 1420, 495, 'Código/palavra-chave para entrar');
+  const p3 = addNodeData('item', 1420, 550, 'Sentimento de tribo e exclusividade');
+  const p4 = addNodeData('item', 1420, 605, 'Ninguém entra sem ser cliente');
+  addConnection(perfil.id, p1.id, 'sage', 'right', 'left');
+  addConnection(perfil.id, p2.id, 'sage', 'right', 'left');
+  addConnection(perfil.id, p3.id, 'sage', 'right', 'left');
+  addConnection(perfil.id, p4.id, 'sage', 'right', 'left');
+
+  const aquec = addNodeData('phase', 1150, 750, 'AQUECIMENTO (5-7 DIAS)', 'blue');
+  addConnection(perfil.id, aquec.id, 'blue', 'bottom', 'top');
+  const a1 = addNodeData('item', 1420, 700, 'Dias 1-2: Bastidores e boas-vindas');
+  const a2 = addNodeData('item', 1420, 755, 'Dias 3-4: Dicas de skincare exclusivas');
+  const a3 = addNodeData('item', 1420, 810, 'Dias 5-7: Teasers da live + expectativa');
+  const a4 = addNodeData('detail', 1440, 865, 'Enquetes e caixas de perguntas para engajar');
+  addConnection(aquec.id, a1.id, 'blue', 'right', 'left');
+  addConnection(aquec.id, a2.id, 'blue', 'right', 'left');
+  addConnection(aquec.id, a3.id, 'blue', 'right', 'left');
+  addConnection(aquec.id, a4.id, 'blue', 'right', 'left');
+
+  const live = addNodeData('phase', 750, 880, 'A LIVE', 'plum');
+  addConnection(aquec.id, live.id, 'plum', 'left', 'right');
+  const l1 = addNodeData('item', 480, 930, 'Abertura (10-15 min): Valor + Comunidade');
+  const l2 = addNodeData('item', 480, 985, 'Meio (15-20 min): Revelar kits + storytelling');
+  const l3 = addNodeData('item', 480, 1040, 'Oferta (10 min): Condição exclusiva Secret Club');
+  addConnection(live.id, l1.id, 'plum', 'left', 'right');
+  addConnection(live.id, l2.id, 'plum', 'left', 'right');
+  addConnection(live.id, l3.id, 'plum', 'left', 'right');
+  const l3d1 = addNodeData('detail', 250, 1010, 'Escassez real: quantidade limitada');
+  const l3d2 = addNodeData('detail', 250, 1050, 'Link só durante a live ou até Xh depois');
+  const l3d3 = addNodeData('detail', 250, 1090, 'Bônus exclusivo para quem compra na hora');
+  addConnection(l3.id, l3d1.id, 'muted', 'left', 'right');
+  addConnection(l3.id, l3d2.id, 'muted', 'left', 'right');
+  addConnection(l3.id, l3d3.id, 'muted', 'left', 'right');
+
+  const pos = addNodeData('phase', 750, 1180, 'PÓS-LIVE (24-48H)', 'rose');
+  addConnection(live.id, pos.id, 'rose', 'bottom', 'top');
+  const po1 = addNodeData('item', 1050, 1140, 'Follow-up WhatsApp: "ficou alguma dúvida?"');
+  const po2 = addNodeData('item', 1050, 1195, 'Depoimentos de quem já comprou no perfil');
+  const po3 = addNodeData('item', 1050, 1250, 'Carrinho aberto 24-48h (sem bônus da live)');
+  addConnection(pos.id, po1.id, 'rose', 'right', 'left');
+  addConnection(pos.id, po2.id, 'rose', 'right', 'left');
+  addConnection(pos.id, po3.id, 'rose', 'right', 'left');
+
+  const ret = addNodeData('phase', 750, 1400, 'RETENÇÃO E CRESCIMENTO', 'slate');
+  addConnection(pos.id, ret.id, 'slate', 'bottom', 'top');
+  const re1 = addNodeData('item', 440, 1360, 'Programa de indicação (convide 1 amiga)');
+  const re2 = addNodeData('item', 440, 1415, 'Conteúdo contínuo no perfil secreto');
+  const re3 = addNodeData('item', 1060, 1360, 'Próximo ciclo de lançamento');
+  const re4 = addNodeData('item', 1060, 1415, 'Pesquisa de satisfação + NPS');
+  addConnection(ret.id, re1.id, 'slate', 'left', 'right');
+  addConnection(ret.id, re2.id, 'slate', 'left', 'right');
+  addConnection(ret.id, re3.id, 'slate', 'right', 'left');
+  addConnection(ret.id, re4.id, 'slate', 'right', 'left');
+
+  setTimeout(() => { drawConnections(); setTimeout(zoomFit, 100); }, 50);
+}
+
+buildFlow();
+</script>
+</body>
+</html>
